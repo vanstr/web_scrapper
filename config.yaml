@@ -1,0 +1,10 @@
+database:
+  path: "./data.db"
+
+server:
+  port: 8080
+
+files:
+  folder_path: "./toprocess"
+  fetch_interval: 60  # minutes
+  remote_feeds: []
