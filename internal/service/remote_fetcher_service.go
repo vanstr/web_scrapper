@@ -328,15 +328,15 @@ func extractImageURLFromHTML(html string) string {
 	return rest[:end]
 }
 
-// normalizeSSLRSSURL ensures ss.lv RSS links use the English variant
-// Example: https://www.ss.lv/ru/electronics/computers/noutbooks/rss/ -> https://www.ss.lv/eng/electronics/computers/noutbooks/rss/
+// normalizeSSLRSSURL ensures ss.lv RSS links use the Russian variant
+// Example: https://www.ss.lv/eng/electronics/computers/noutbooks/rss/ -> https://www.ss.lv/ru/electronics/computers/noutbooks/rss/
 func normalizeSSLRSSURL(url string) string {
 	if !strings.Contains(url, "ss.lv/") {
 		return url
 	}
 	// Normalize protocol and slashes
-	url = strings.ReplaceAll(url, "//www.ss.lv/ru/", "//www.ss.lv/eng/")
-	url = strings.ReplaceAll(url, "//ss.lv/ru/", "//ss.lv/eng/")
-	url = strings.ReplaceAll(url, "/ru/", "/eng/")
+	url = strings.ReplaceAll(url, "//www.ss.lv/eng/", "//www.ss.lv/ru/")
+	url = strings.ReplaceAll(url, "//ss.lv/eng/", "//ss.lv/ru/")
+	url = strings.ReplaceAll(url, "/eng/", "/ru/")
 	return url
 }
