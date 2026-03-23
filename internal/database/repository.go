@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -24,13 +25,14 @@ func NewRepository(db *DB) *Repository {
 func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 	// Check if item already exists
 	var exists bool
-	err := r.db.conn.QueryRow("SELECT EXISTS(SELECT 1 FROM parsed_items WHERE link = ?)", item.Link).Scan(&exists)
-	if err != nil {
+	var existingID string
+	err := r.db.conn.QueryRow("SELECT id FROM parsed_items WHERE link = ?", item.Link).Scan(&existingID)
+	if err == sql.ErrNoRows {
+		exists = false
+	} else if err != nil {
 		return false, fmt.Errorf("failed to check if item exists: %w", err)
-	}
-
-	if exists {
-		return false, nil // Item already exists, skip
+	} else {
+		exists = true
 	}
 
 	// Begin transaction
@@ -40,19 +42,43 @@ func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 	}
 	defer tx.Rollback()
 
-	// Insert parsed item
-	_, err = tx.Exec(`
-		INSERT INTO parsed_items (
-			id, link, title, pub_date, description, brand, model, price, 
-			image_url, category_name, processed_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		item.ID, item.Link, item.Title, item.PubDate, item.Description,
-		item.Brand, item.Model, item.Price, item.ImageURL, item.Category.Name,
-		item.ProcessedAt, time.Now(),
-	)
-	if err != nil {
-		return false, fmt.Errorf("failed to insert parsed item: %w", err)
+	itemID := item.ID
+	if exists {
+		itemID = existingID
+
+		// Update parsed item fields and refresh properties
+		_, err = tx.Exec(`
+			UPDATE parsed_items
+			SET title = ?, pub_date = ?, description = ?, brand = ?, model = ?, price = ?,
+			    image_url = ?, category_name = ?, processed_at = ?
+			WHERE link = ?
+		`,
+			item.Title, item.PubDate, item.Description, item.Brand, item.Model, item.Price,
+			item.ImageURL, item.Category.Name, item.ProcessedAt, item.Link,
+		)
+		if err != nil {
+			return false, fmt.Errorf("failed to update parsed item: %w", err)
+		}
+
+		_, err = tx.Exec(`DELETE FROM properties WHERE item_id = ?`, itemID)
+		if err != nil {
+			return false, fmt.Errorf("failed to delete properties: %w", err)
+		}
+	} else {
+		// Insert parsed item
+		_, err = tx.Exec(`
+			INSERT INTO parsed_items (
+				id, link, title, pub_date, description, brand, model, price, 
+				image_url, category_name, processed_at, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			item.ID, item.Link, item.Title, item.PubDate, item.Description,
+			item.Brand, item.Model, item.Price, item.ImageURL, item.Category.Name,
+			item.ProcessedAt, time.Now(),
+		)
+		if err != nil {
+			return false, fmt.Errorf("failed to insert parsed item: %w", err)
+		}
 	}
 
 	// Insert properties
@@ -74,7 +100,7 @@ func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 				item_id, property_meta_id, string_value, number_value, money_value, date_value
 			) VALUES (?, ?, ?, ?, ?, ?)
 		`,
-			item.ID, propMetaID, prop.StringValue, prop.NumberValue, prop.MoneyValue, prop.DateValue,
+			itemID, propMetaID, prop.StringValue, prop.NumberValue, prop.MoneyValue, prop.DateValue,
 		)
 		if err != nil {
 			return false, fmt.Errorf("failed to insert property: %w", err)
@@ -86,7 +112,7 @@ func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return true, nil
+	return !exists, nil
 }
 
 // GetItemByID retrieves an item by its ID
@@ -171,4 +197,95 @@ func (r *Repository) CountItemsByCategory() (map[string]int, error) {
 	}
 
 	return counts, nil
+}
+
+// ListItems returns items from the database with optional category filter
+func (r *Repository) ListItems(ctx context.Context, category string, limit int) ([]domain.ParsedItem, error) {
+	var query string
+	var args []interface{}
+
+	if category != "" {
+		query = `
+			SELECT id, link, title, pub_date, description, brand, model, price, 
+			       image_url, category_name, processed_at, created_at
+			FROM parsed_items
+			WHERE category_name = ?
+			ORDER BY pub_date DESC
+			LIMIT ?
+		`
+		args = []interface{}{category, limit}
+	} else {
+		query = `
+			SELECT id, link, title, pub_date, description, brand, model, price, 
+			       image_url, category_name, processed_at, created_at
+			FROM parsed_items
+			ORDER BY pub_date DESC
+			LIMIT ?
+		`
+		args = []interface{}{limit}
+	}
+
+	rows, err := r.db.conn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []domain.ParsedItem
+	for rows.Next() {
+		var item domain.ParsedItem
+		var categoryName string
+		var pubDateStr, processedAtStr, createdAtStr string
+
+		err := rows.Scan(
+			&item.ID, &item.Link, &item.Title, &pubDateStr, &item.Description,
+			&item.Brand, &item.Model, &item.Price, &item.ImageURL, &categoryName,
+			&processedAtStr, &createdAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan item: %w", err)
+		}
+
+		// Parse dates from SQLite string format
+		item.PubDate = parseDateTime(pubDateStr)
+		item.ProcessedAt = parseDateTime(processedAtStr)
+		item.CreatedAt = parseDateTime(createdAtStr)
+
+		cat := domain.GetCategoryByName(categoryName)
+		if cat != nil {
+			item.Category = *cat
+		}
+
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+// parseDateTime parses SQLite datetime string to time.Time
+func parseDateTime(s string) time.Time {
+	layouts := []string{
+		"2006-01-02 15:04:05 -0700 -0700", // Go time.Time with duplicate zone
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02T15:04:05-07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// GetStatistics returns item counts by category
+func (r *Repository) GetStatistics(ctx context.Context) (map[string]int, error) {
+	return r.CountItemsByCategory()
 }

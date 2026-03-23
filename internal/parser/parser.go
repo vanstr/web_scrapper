@@ -34,9 +34,9 @@ func extractImageURL(html string) string {
 }
 
 // extractField extracts a field value from HTML like: FieldName: <b>Value</b>
+// Only matches the exact fieldName label (no aliases)
 func extractField(html, fieldName string) string {
-	// Try pattern: FieldName: <b>Value</b>
-	pattern := fieldName + `:\s*<b>(?:<b>)?([^<]+)`
+	pattern := regexp.QuoteMeta(fieldName) + `:\s*<b>(?:<b>)?([^<]+)`
 	re := regexp.MustCompile(pattern)
 	matches := re.FindStringSubmatch(html)
 	if len(matches) > 1 {
@@ -50,13 +50,21 @@ func extractField(html, fieldName string) string {
 }
 
 // extractPrice extracts price from HTML like: Price: <b>149 €</b> or <b>149</b> €
+// Supports both English "Price" and Russian "Цена"
 func extractPrice(html string) int {
-	re := regexp.MustCompile(`Price:\s*<b>(?:<b>)?(\d+)`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) > 1 {
-		price, err := strconv.Atoi(matches[1])
-		if err == nil {
-			return price
+	patterns := []string{
+		`Price:\s*<b>(?:<b>)?(\d+)`,
+		`Цена:\s*<b>(?:<b>)?(\d+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(html)
+		if len(matches) > 1 {
+			price, err := strconv.Atoi(matches[1])
+			if err == nil && price > 0 {
+				return price
+			}
 		}
 	}
 	return 0

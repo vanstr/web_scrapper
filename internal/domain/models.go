@@ -81,6 +81,15 @@ var PredefinedCategories = []Category{
 			{ID: 17, Name: "Mileage", Type: "number"},
 		},
 	},
+	{
+		Name: "baby_bicycles",
+		Props: []PropertyMeta{
+			{ID: 18, Name: "Brand", Type: "string"},
+			{ID: 19, Name: "Model", Type: "string"},
+			{ID: 20, Name: "Year", Type: "number"},
+			{ID: 21, Name: "Condition", Type: "string"},
+		},
+	},
 }
 
 // GetCategoryByName returns a category by name or nil if not found
