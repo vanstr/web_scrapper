@@ -34,38 +34,17 @@ func extractImageURL(html string) string {
 }
 
 // extractField extracts a field value from HTML like: FieldName: <b>Value</b>
-// Supports both English and Russian field names
+// Only matches the exact fieldName label (no aliases)
 func extractField(html, fieldName string) string {
-	// Map English field names to Russian equivalents / aliases for ss.lv
-	aliases := map[string][]string{
-		"Brand":     {"Brand", "Марка"},
-		"Model":     {"Model", "Модель"},
-		"Size":      {"Size", "Размер"},
-		"Price":     {"Price", "Цена"},
-		"Year":      {"Year", "Год"},
-		"Screen":    {"Screen", "Экран", "Дисплей"},
-		"HDD":       {"HDD", "Диск", "Жесткий диск"},
-		"RAM":       {"RAM", "Ram", "Оперативная память", "Память"},
-		"Diagonal":  {"Diagonal", "Диагональ"},
-		"Condition": {"Condition", "Состояние"},
-	}
-
-	names, ok := aliases[fieldName]
-	if !ok || len(names) == 0 {
-		names = []string{fieldName}
-	}
-
-	for _, name := range names {
-		pattern := `(?i)` + regexp.QuoteMeta(name) + `:\s*<b>(?:<b>)?([^<]+)`
-		re := regexp.MustCompile(pattern)
-		matches := re.FindStringSubmatch(html)
-		if len(matches) > 1 {
-			value := strings.TrimSpace(matches[1])
-			// Clean up nested tags and line breaks
-			value = strings.ReplaceAll(value, "<br>", "")
-			value = strings.ReplaceAll(value, "</b>", "")
-			return strings.TrimSpace(value)
-		}
+	pattern := regexp.QuoteMeta(fieldName) + `:\s*<b>(?:<b>)?([^<]+)`
+	re := regexp.MustCompile(pattern)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		value := strings.TrimSpace(matches[1])
+		// Clean up nested tags and line breaks
+		value = strings.ReplaceAll(value, "<br>", "")
+		value = strings.ReplaceAll(value, "</b>", "")
+		return strings.TrimSpace(value)
 	}
 	return ""
 }
@@ -89,20 +68,6 @@ func extractPrice(html string) int {
 		}
 	}
 	return 0
-}
-
-// extractRAMFromText tries to infer RAM amount from free-form text.
-// Returns the numeric value as string (e.g., "8", "16").
-func extractRAMFromText(text string) string {
-	// Normalize spacing
-	clean := strings.ReplaceAll(text, "\u00a0", " ")
-	// Common patterns: "16GB", "16 Gb", "16 gB", "RAM 16", "16 gb ram"
-	re := regexp.MustCompile(`(?i)(?:ram\s*[:=]?\s*)?(\d{1,2})\s*(?:g|gb|гб)`) // 1-2 digits
-	m := re.FindStringSubmatch(clean)
-	if len(m) > 1 {
-		return m[1]
-	}
-	return ""
 }
 
 // createStringProperty creates a string property

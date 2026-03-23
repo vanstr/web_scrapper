@@ -49,6 +49,7 @@ func NewRemoteFetcherService() *RemoteFetcherService {
 
 // FetchFromURL fetches and parses a single RSS feed from URL
 func (s *RemoteFetcherService) FetchFromURL(ctx context.Context, url string, category string) ([]domain.ParsedItem, error) {
+	url = normalizeSSLRSSURL(url)
 	log.Printf("Fetching RSS from URL: %s (category: %s)", url, category)
 
 	// Get parser for this category
@@ -126,7 +127,7 @@ func (s *RemoteFetcherService) fetchURL(ctx context.Context, url string) ([]byte
 
 // DetectCategoryFromURL tries to detect category from URL patterns
 func (s *RemoteFetcherService) DetectCategoryFromURL(url string) string {
-	lowerURL := strings.ToLower(url)
+	lowerURL := strings.ToLower(normalizeSSLRSSURL(url))
 
 	patterns := map[string]string{
 		"monitors":             "monitors",
@@ -325,4 +326,17 @@ func extractImageURLFromHTML(html string) string {
 		return ""
 	}
 	return rest[:end]
+}
+
+// normalizeSSLRSSURL ensures ss.lv RSS links use the English variant
+// Example: https://www.ss.lv/ru/electronics/computers/noutbooks/rss/ -> https://www.ss.lv/eng/electronics/computers/noutbooks/rss/
+func normalizeSSLRSSURL(url string) string {
+	if !strings.Contains(url, "ss.lv/") {
+		return url
+	}
+	// Normalize protocol and slashes
+	url = strings.ReplaceAll(url, "//www.ss.lv/ru/", "//www.ss.lv/eng/")
+	url = strings.ReplaceAll(url, "//ss.lv/ru/", "//ss.lv/eng/")
+	url = strings.ReplaceAll(url, "/ru/", "/eng/")
+	return url
 }
