@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -171,4 +172,95 @@ func (r *Repository) CountItemsByCategory() (map[string]int, error) {
 	}
 
 	return counts, nil
+}
+
+// ListItems returns items from the database with optional category filter
+func (r *Repository) ListItems(ctx context.Context, category string, limit int) ([]domain.ParsedItem, error) {
+	var query string
+	var args []interface{}
+
+	if category != "" {
+		query = `
+			SELECT id, link, title, pub_date, description, brand, model, price, 
+			       image_url, category_name, processed_at, created_at
+			FROM parsed_items
+			WHERE category_name = ?
+			ORDER BY pub_date DESC
+			LIMIT ?
+		`
+		args = []interface{}{category, limit}
+	} else {
+		query = `
+			SELECT id, link, title, pub_date, description, brand, model, price, 
+			       image_url, category_name, processed_at, created_at
+			FROM parsed_items
+			ORDER BY pub_date DESC
+			LIMIT ?
+		`
+		args = []interface{}{limit}
+	}
+
+	rows, err := r.db.conn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []domain.ParsedItem
+	for rows.Next() {
+		var item domain.ParsedItem
+		var categoryName string
+		var pubDateStr, processedAtStr, createdAtStr string
+
+		err := rows.Scan(
+			&item.ID, &item.Link, &item.Title, &pubDateStr, &item.Description,
+			&item.Brand, &item.Model, &item.Price, &item.ImageURL, &categoryName,
+			&processedAtStr, &createdAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan item: %w", err)
+		}
+
+		// Parse dates from SQLite string format
+		item.PubDate = parseDateTime(pubDateStr)
+		item.ProcessedAt = parseDateTime(processedAtStr)
+		item.CreatedAt = parseDateTime(createdAtStr)
+
+		cat := domain.GetCategoryByName(categoryName)
+		if cat != nil {
+			item.Category = *cat
+		}
+
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+// parseDateTime parses SQLite datetime string to time.Time
+func parseDateTime(s string) time.Time {
+	layouts := []string{
+		"2006-01-02 15:04:05 -0700 -0700", // Go time.Time with duplicate zone
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02T15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02T15:04:05-07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		time.RFC3339,
+		time.RFC3339Nano,
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// GetStatistics returns item counts by category
+func (r *Repository) GetStatistics(ctx context.Context) (map[string]int, error) {
+	return r.CountItemsByCategory()
 }

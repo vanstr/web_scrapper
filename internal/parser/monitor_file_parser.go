@@ -51,24 +51,26 @@ func (p *MonitorFileParser) ParseFile(ctx context.Context, filePath string) ([]d
 
 // parseRSSFile parses RSS XML file
 func (p *MonitorFileParser) parseRSSFile(filePath string) ([]domain.ParsedItem, error) {
-	// Read file
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Parse XML
+	return p.ParseRSSData(context.Background(), data)
+}
+
+// ParseRSSData parses RSS XML data from bytes (for remote fetching)
+func (p *MonitorFileParser) ParseRSSData(ctx context.Context, data []byte) ([]domain.ParsedItem, error) {
 	var rssFeed domain.RSSFeed
 	if err := xml.Unmarshal(data, &rssFeed); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal XML: %w", err)
 	}
 
-	// Convert RSS items to ParsedItems
 	var items []domain.ParsedItem
 	for _, rssItem := range rssFeed.Channel.Items {
 		item, err := p.convertRSSItemToParsedItem(rssItem)
 		if err != nil {
-			continue // Skip invalid items
+			continue
 		}
 		items = append(items, item)
 	}

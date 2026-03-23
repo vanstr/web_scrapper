@@ -20,10 +20,11 @@ type FetcherService struct {
 func NewFetcherService() *FetcherService {
 	return &FetcherService{
 		parsers: map[string]parser.FileParser{
-			"monitors":  parser.NewMonitorFileParser(),
-			"notebooks": parser.NewNotebookFileParser(),
-			"tvs":       parser.NewTVFileParser(),
-			"cars":      parser.NewCarFileParser(),
+			"monitors":      parser.NewMonitorFileParser(),
+			"notebooks":     parser.NewNotebookFileParser(),
+			"tvs":           parser.NewTVFileParser(),
+			"cars":          parser.NewCarFileParser(),
+			"baby_bicycles": parser.NewBabyBicycleFileParser(),
 		},
 	}
 }
@@ -79,11 +80,14 @@ func (s *FetcherService) FetchFromFolder(ctx context.Context, folderPath string)
 // Examples: rss-monitor.xml -> monitors, ss-cars.html -> cars
 func (s *FetcherService) detectCategoryFromFilename(filename string) string {
 	patterns := map[string]string{
-		"monitor":  "monitors",
-		"notebook": "notebooks",
-		"noutbook": "notebooks", // Alternative spelling
-		"tv":       "tvs",
-		"car":      "cars",
+		"monitor":       "monitors",
+		"notebook":      "notebooks",
+		"noutbook":      "notebooks", // Alternative spelling
+		"tv":            "tvs",
+		"car":           "cars",
+		"bicycle":       "baby_bicycles",
+		"childrens":     "baby_bicycles",
+		"tots":          "baby_bicycles",
 	}
 
 	lowerFilename := strings.ToLower(filename)

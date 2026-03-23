@@ -126,6 +126,7 @@ func (db *DB) initCategories() error {
 		{"notebooks", "Notebooks"},
 		{"tvs", "TVs"},
 		{"cars", "Cars"},
+		{"baby_bicycles", "Baby Bicycles"},
 	}
 
 	for _, cat := range categories {
@@ -165,6 +166,11 @@ func (db *DB) initCategories() error {
 		{"cars", "Year", "number"},
 		{"cars", "Engine", "string"},
 		{"cars", "Mileage", "number"},
+		// Baby Bicycles
+		{"baby_bicycles", "Brand", "string"},
+		{"baby_bicycles", "Model", "string"},
+		{"baby_bicycles", "Year", "number"},
+		{"baby_bicycles", "Condition", "string"},
 	}
 
 	for _, prop := range properties {

@@ -58,6 +58,11 @@ func (p *NotebookFileParser) parseRSSFile(filePath string) ([]domain.ParsedItem,
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
+	return p.ParseRSSData(context.Background(), data)
+}
+
+// ParseRSSData parses RSS XML data from bytes (for remote fetching)
+func (p *NotebookFileParser) ParseRSSData(ctx context.Context, data []byte) ([]domain.ParsedItem, error) {
 	var rssFeed domain.RSSFeed
 	if err := xml.Unmarshal(data, &rssFeed); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal XML: %w", err)

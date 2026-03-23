@@ -34,29 +34,54 @@ func extractImageURL(html string) string {
 }
 
 // extractField extracts a field value from HTML like: FieldName: <b>Value</b>
+// Supports both English and Russian field names
 func extractField(html, fieldName string) string {
-	// Try pattern: FieldName: <b>Value</b>
-	pattern := fieldName + `:\s*<b>(?:<b>)?([^<]+)`
-	re := regexp.MustCompile(pattern)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) > 1 {
-		value := strings.TrimSpace(matches[1])
-		// Clean up nested tags and line breaks
-		value = strings.ReplaceAll(value, "<br>", "")
-		value = strings.ReplaceAll(value, "</b>", "")
-		return strings.TrimSpace(value)
+	// Map English field names to Russian equivalents for ss.lv
+	russianNames := map[string]string{
+		"Brand": "Марка",
+		"Model": "Модель",
+		"Size":  "Размер",
+		"Price": "Цена",
+		"Year":  "Год",
+	}
+
+	// Try English first, then Russian
+	names := []string{fieldName}
+	if ru, ok := russianNames[fieldName]; ok {
+		names = append(names, ru)
+	}
+
+	for _, name := range names {
+		pattern := name + `:\s*<b>(?:<b>)?([^<]+)`
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(html)
+		if len(matches) > 1 {
+			value := strings.TrimSpace(matches[1])
+			// Clean up nested tags and line breaks
+			value = strings.ReplaceAll(value, "<br>", "")
+			value = strings.ReplaceAll(value, "</b>", "")
+			return strings.TrimSpace(value)
+		}
 	}
 	return ""
 }
 
 // extractPrice extracts price from HTML like: Price: <b>149 €</b> or <b>149</b> €
+// Supports both English "Price" and Russian "Цена"
 func extractPrice(html string) int {
-	re := regexp.MustCompile(`Price:\s*<b>(?:<b>)?(\d+)`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) > 1 {
-		price, err := strconv.Atoi(matches[1])
-		if err == nil {
-			return price
+	patterns := []string{
+		`Price:\s*<b>(?:<b>)?(\d+)`,
+		`Цена:\s*<b>(?:<b>)?(\d+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(html)
+		if len(matches) > 1 {
+			price, err := strconv.Atoi(matches[1])
+			if err == nil && price > 0 {
+				return price
+			}
 		}
 	}
 	return 0
