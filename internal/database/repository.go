@@ -25,13 +25,14 @@ func NewRepository(db *DB) *Repository {
 func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 	// Check if item already exists
 	var exists bool
-	err := r.db.conn.QueryRow("SELECT EXISTS(SELECT 1 FROM parsed_items WHERE link = ?)", item.Link).Scan(&exists)
-	if err != nil {
+	var existingID string
+	err := r.db.conn.QueryRow("SELECT id FROM parsed_items WHERE link = ?", item.Link).Scan(&existingID)
+	if err == sql.ErrNoRows {
+		exists = false
+	} else if err != nil {
 		return false, fmt.Errorf("failed to check if item exists: %w", err)
-	}
-
-	if exists {
-		return false, nil // Item already exists, skip
+	} else {
+		exists = true
 	}
 
 	// Begin transaction
@@ -41,19 +42,43 @@ func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 	}
 	defer tx.Rollback()
 
-	// Insert parsed item
-	_, err = tx.Exec(`
-		INSERT INTO parsed_items (
-			id, link, title, pub_date, description, brand, model, price, 
-			image_url, category_name, processed_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		item.ID, item.Link, item.Title, item.PubDate, item.Description,
-		item.Brand, item.Model, item.Price, item.ImageURL, item.Category.Name,
-		item.ProcessedAt, time.Now(),
-	)
-	if err != nil {
-		return false, fmt.Errorf("failed to insert parsed item: %w", err)
+	itemID := item.ID
+	if exists {
+		itemID = existingID
+
+		// Update parsed item fields and refresh properties
+		_, err = tx.Exec(`
+			UPDATE parsed_items
+			SET title = ?, pub_date = ?, description = ?, brand = ?, model = ?, price = ?,
+			    image_url = ?, category_name = ?, processed_at = ?
+			WHERE link = ?
+		`,
+			item.Title, item.PubDate, item.Description, item.Brand, item.Model, item.Price,
+			item.ImageURL, item.Category.Name, item.ProcessedAt, item.Link,
+		)
+		if err != nil {
+			return false, fmt.Errorf("failed to update parsed item: %w", err)
+		}
+
+		_, err = tx.Exec(`DELETE FROM properties WHERE item_id = ?`, itemID)
+		if err != nil {
+			return false, fmt.Errorf("failed to delete properties: %w", err)
+		}
+	} else {
+		// Insert parsed item
+		_, err = tx.Exec(`
+			INSERT INTO parsed_items (
+				id, link, title, pub_date, description, brand, model, price, 
+				image_url, category_name, processed_at, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			item.ID, item.Link, item.Title, item.PubDate, item.Description,
+			item.Brand, item.Model, item.Price, item.ImageURL, item.Category.Name,
+			item.ProcessedAt, time.Now(),
+		)
+		if err != nil {
+			return false, fmt.Errorf("failed to insert parsed item: %w", err)
+		}
 	}
 
 	// Insert properties
@@ -75,7 +100,7 @@ func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 				item_id, property_meta_id, string_value, number_value, money_value, date_value
 			) VALUES (?, ?, ?, ?, ?, ?)
 		`,
-			item.ID, propMetaID, prop.StringValue, prop.NumberValue, prop.MoneyValue, prop.DateValue,
+			itemID, propMetaID, prop.StringValue, prop.NumberValue, prop.MoneyValue, prop.DateValue,
 		)
 		if err != nil {
 			return false, fmt.Errorf("failed to insert property: %w", err)
@@ -87,7 +112,7 @@ func (r *Repository) SaveItem(item *domain.ParsedItem) (bool, error) {
 		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return true, nil
+	return !exists, nil
 }
 
 // GetItemByID retrieves an item by its ID

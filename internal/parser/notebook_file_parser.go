@@ -106,6 +106,11 @@ func (p *NotebookFileParser) convertRSSItemToParsedItem(rssItem domain.RSSItem) 
 	hddStr := extractField(rssItem.Description, "HDD")
 	ramStr := extractField(rssItem.Description, "RAM")
 
+	// Fallback: infer RAM from title/description text if not in fields
+	if ramStr == "" {
+		ramStr = extractRAMFromText(rssItem.Title + " " + rssItem.Description)
+	}
+
 	// Skip items without price
 	if price <= 0 {
 		return domain.ParsedItem{}, fmt.Errorf("item has no valid price")
